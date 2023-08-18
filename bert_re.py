@@ -13,7 +13,7 @@ import torch
 import numpy as np
 import random
 
-from io import FileIO
+from file_writer import file_writer
 
 class bert_test(exp_models.exp_models):
     _accelerator: Accelerator
@@ -21,16 +21,16 @@ class bert_test(exp_models.exp_models):
     _l_test_loss: l_test_loss
     _l_ntk: l_ntk
     _writer: SummaryWriter
-    _ntk_writer: FileIO
+    _file_writer: file_writer
     _num_epochs: int
 
     def __init__(self, model_name: str, config_file: str):
         config = BertConfig.from_json_file(config_file)
         
-        self._base_model  = base_models.BertForMLM(config=config)
-        self._dataset     = Wikitext(config=config)
-        self._writer      = SummaryWriter("log/" + model_name)
-        self._ntk_writer  = open("log/" + model_name + "_lmax.log", "wb+")
+        self._base_model   = base_models.BertForMLM(config=config)
+        self._dataset      = Wikitext(config=config)
+        self._writer       = SummaryWriter("log/" + model_name)
+        self._file_writer  = file_writer("log/" + model_name + "_t")
         
         self._train_loader = self._dataset.train_loader
         self._val_loader   = self._dataset.val_loader
@@ -38,7 +38,9 @@ class bert_test(exp_models.exp_models):
         
         self._l_train_loss = l_train_loss(self._base_model, self._writer)
         self._l_test_loss  = l_test_loss(self._base_model, self._writer)
-        self._l_ntk        = l_ntk(self._base_model, self._ntk_writer)
+        self._l_ntk        = l_ntk(self._base_model, self._file_writer)
+        
+        self._accelerator  = Accelerator()
         
         
     
@@ -53,17 +55,31 @@ class bert_test(exp_models.exp_models):
             num_warmup_steps=num_updates * 0.05,
             num_training_steps=num_updates,
         )
+        
+        self._base_model, self._optimizer, self._lr_scheduler, \
+            self._train_loader, self._val_loader, self._test_loader = \
+        self._accelerator.prepare(
+            self._base_model, 
+            self._optimizer, 
+            self._lr_scheduler, 
+            self._train_loader, 
+            self._val_loader, 
+            self._test_loader
+        )
 
     
     def train(self) -> None:
+        
         for epoch in range(self._num_epochs):
-            self._l_ntk.compute(train_loader=self._train_loader)
-
             self._base_model.train()
+            
+            self._l_ntk.compute(train_loader=self._train_loader)
+            self._l_ntk.flush()
+            
+            
             for i, batch in enumerate(self._train_loader):
                 
                 loss, _ = self._base_model(**batch)
-
                 self._optimizer.zero_grad()
                 loss.backward()
                 self._optimizer.step()
@@ -73,9 +89,9 @@ class bert_test(exp_models.exp_models):
             
             self._l_test_loss.compute(test_loader=self._test_loader, epoch=epoch)
             
-            self._l_ntk.flush()
             self._l_test_loss.flush()
             self._l_train_loss.flush()
+            
             
 
 def get_available_cuda_device() -> int:
@@ -101,8 +117,7 @@ import sys
 if __name__ == "__main__":
     set_seed(10315)
     
-    n = "110"
-    # n = sys.argv[1]
+    n = sys.argv[1]
     
     availabe_device = get_available_cuda_device()
     if availabe_device < 0:
