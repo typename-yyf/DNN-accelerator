@@ -174,5 +174,68 @@ class l_grad(logger):
         self._head_max_grad = torch.zeros_like(self._head_max_grad)
         self._head_sum_grad = torch.zeros_like(self._head_sum_grad)
 
+class l_hessian(logger):
+    pass               
+
+class l_learning_rate(logger):
+    
+    _epoch: int
+    _lr: float
+    
+    def __init__(self, model: Module, writer: SummaryWriter, accelerator: Accelerator=None):
+        super(l_learning_rate, self).__init__(model, writer, accelerator)
+        
+    def compute(self, optimizer, epoch: int):
+        self._lr = optimizer.param_groups[0]["lr"]
+        self._epoch = epoch
+        
+    def flush(self):
+        self._writer.add_scalar("learning_rate", self._lr, self._epoch)
+
+r'''
+    计算：|| wi - w0 ||2 / || wi ||2
+'''    
+class l_dis_wi_w0(logger):
+
+    _w0: dict
+    _w0_norm: float
+    _ans: float
+    _epoch: int
+    _only_head: bool
+    
+    def __init__(
+        self, model: Module, writer: SummaryWriter,
+        accelerator: Accelerator=None, only_head: bool=True
+    ):
+        super(l_dis_wi_w0, self).__init__(model, writer, accelerator)
+        
+        self._w0_norm   = 0.0
+        self._ans       = 0.0
+        self._w0        = {}
+        self._only_head = only_head
+        
+    
+    def init_w0(self, parameter, max_paras: int=1):
+        for name, para in parameter:
+            if (not self._only_head) or ("head" in name):
+                self._w0[name] = para.detach().clone()
+                self._w0_norm += torch.norm(para).item()
                 
+                max_paras -= 1
+                if max_paras <= 0:
+                    break
+                
+    
+    def compute(self, parameter, epoch: int):
+        self._epoch = epoch
+        
+        for name, para in parameter:
+            p = self._w0.get(name)
+            if not p is None:
+                self._ans += torch.norm((p - para.detach())).item()
+                
+    def flush(self):
+        self._writer.add_scalar("dis_wi_w0", self._ans, self._epoch)
+        self._epoch = 0
+    
     
