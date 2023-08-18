@@ -1,7 +1,8 @@
 from logger import *
-from io import FileIO
+from file_writer import file_writer
 import torch
 import util
+
 
 r'''
 这个文件定义了一些基础的logger，用于分析模型训练过程中产生的一些参数。
@@ -33,6 +34,8 @@ class l_train_loss(logger):
         train_loss = self._t_loss / self._t_batches
         self._writer.add_scalar("train_loss", train_loss, self._epoch)
         
+        print("train_loss:", train_loss)
+        
         self._t_loss = 0
         self._t_batches = 0
         
@@ -44,7 +47,7 @@ class l_test_loss(logger):
     def __init__(self, model: Module, writer: SummaryWriter, accelerator: Accelerator=None):
         super(l_test_loss, self).__init__(model, writer, accelerator)
         
-        self._loss   = 0
+        self._loss = 0
         
     def compute(self, test_loader, epoch: int):
         for i, batch in enumerate(test_loader):
@@ -58,12 +61,15 @@ class l_test_loss(logger):
             
     def flush(self):
         self._writer.add_scalar("test_loss", self._loss, self._epoch)
+        
+        print("test_loss:", self._loss)
+        
         self._loss = 0
     
 class l_ntk(logger):
     _head_lmax: torch.Tensor
     
-    def __init__(self, model: Module, writer: FileIO, accelerator: Accelerator=None):
+    def __init__(self, model: Module, writer: file_writer, accelerator: Accelerator=None):
         super(l_ntk, self).__init__(model, writer, accelerator)
         
     def compute(self, train_loader, ker_size: int=4):
@@ -115,9 +121,9 @@ class l_ntk(logger):
             ])
             for l in range(config.num_hidden_layers)
         ])
-
+        
     def flush(self):
-        torch.save(self._head_lmax, self._writer)
+        self._writer.add_tensor("lmax", self._head_lmax)
         self._head_lmax = None
     
 class l_ntk_single_head(logger):
@@ -129,4 +135,44 @@ class l_ntk_single_head(logger):
     ):
         super(l_ntk_single_head, self).__init__(model, writer, accelerator)
         pass
+
+class l_grad(logger):
+    _head_max_grad: torch.Tensor
+    _head_sum_grad: torch.Tensor
+
+    def __init__(
+        self, 
+        model: Module, writer: file_writer, accelerator: Accelerator=None
+    ):
+        super(l_grad, self).__init__(model, writer, accelerator)
         
+        layers = model.config.num_hidden_layers
+        heads  = model.config.num_attention_heads
+        
+        self._head_max_grad = torch.zeros((layers, heads), dtype=torch.float32)
+        self._head_sum_grad = torch.zeros((layers, heads), dtype=torch.float32)
+        
+    def compute(self, parameter):
+        for name, para in parameter:
+            if "heads" in name:
+                grad = para.grad.detach()
+                grad = torch.abs(grad)
+                grad_sum = torch.sum(grad).item()
+                grad_max = torch.max(grad).item()
+                
+                splited = name.split('.')
+                l = int(splited[splited.index('layers') + 1])
+                h = int(splited[splited.index('heads') + 1])
+                
+                self._head_sum_grad[l][h] += grad_sum
+                self._head_max_grad[l][h] = max(grad_max, self._head_max_grad[l][h])
+    
+    def flush(self):
+        self._writer.add_tensor("grad_max", self._head_max_grad)
+        self._writer.add_tensor("grad_sum", self._head_sum_grad)
+        
+        self._head_max_grad = torch.zeros_like(self._head_max_grad)
+        self._head_sum_grad = torch.zeros_like(self._head_sum_grad)
+
+                
+    
