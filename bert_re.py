@@ -88,7 +88,7 @@ class bert_test(exp_models.exp_models):
                 self._lr_scheduler.step()
                 
                 self._l_train_loss.compute(loss=loss, epoch=epoch)
-                self._l_grad.compute(parameter=self._base_model.named_parameters)
+                self._l_grad.compute(parameter=self._base_model.named_parameters())
             
             self._l_test_loss.compute(test_loader=self._test_loader, epoch=epoch)
             
