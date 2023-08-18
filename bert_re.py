@@ -7,7 +7,7 @@ from accelerate import Accelerator
 from torch.utils.tensorboard import SummaryWriter
 from transformers import BertConfig, get_cosine_schedule_with_warmup
 import torch.optim as optim
-from base_loggers import l_train_loss, l_test_loss, l_ntk
+from base_loggers import l_train_loss, l_test_loss, l_ntk, l_grad
 
 import torch
 import numpy as np
@@ -20,6 +20,8 @@ class bert_test(exp_models.exp_models):
     _l_train_loss: l_train_loss
     _l_test_loss: l_test_loss
     _l_ntk: l_ntk
+    _l_grad: l_grad
+    
     _writer: SummaryWriter
     _file_writer: file_writer
     _num_epochs: int
@@ -39,9 +41,9 @@ class bert_test(exp_models.exp_models):
         self._l_train_loss = l_train_loss(self._base_model, self._writer)
         self._l_test_loss  = l_test_loss(self._base_model, self._writer)
         self._l_ntk        = l_ntk(self._base_model, self._file_writer)
+        self._l_grad       = l_grad(self._base_model, self._file_writer)
         
         self._accelerator  = Accelerator()
-        
         
     
     def init_model(self) -> None:
@@ -86,14 +88,15 @@ class bert_test(exp_models.exp_models):
                 self._lr_scheduler.step()
                 
                 self._l_train_loss.compute(loss=loss, epoch=epoch)
+                self._l_grad.compute(parameter=self._base_model.named_parameters)
             
             self._l_test_loss.compute(test_loader=self._test_loader, epoch=epoch)
             
             self._l_test_loss.flush()
             self._l_train_loss.flush()
+            self._l_grad.flush()
             
             
-
 def get_available_cuda_device() -> int:
     max_devs = torch.cuda.device_count()
     for i in range(max_devs):
@@ -115,6 +118,7 @@ def set_seed(seed: int) -> None:
 import sys
 
 if __name__ == "__main__":
+    # 这个seed目前在17个epoch就可以复现不稳定性
     set_seed(10315)
     
     n = sys.argv[1]
