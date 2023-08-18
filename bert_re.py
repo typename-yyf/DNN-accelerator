@@ -7,7 +7,7 @@ from accelerate import Accelerator
 from torch.utils.tensorboard import SummaryWriter
 from transformers import BertConfig, get_cosine_schedule_with_warmup
 import torch.optim as optim
-from base_loggers import l_train_loss, l_test_loss, l_ntk, l_grad
+from base_loggers import l_train_loss, l_test_loss, l_ntk, l_grad, l_dis_wi_w0, l_learning_rate
 
 import torch
 import numpy as np
@@ -17,10 +17,13 @@ from file_writer import file_writer
 
 class bert_test(exp_models.exp_models):
     _accelerator: Accelerator
+    
     _l_train_loss: l_train_loss
     _l_test_loss: l_test_loss
     _l_ntk: l_ntk
     _l_grad: l_grad
+    _l_lr: l_learning_rate
+    _l_dis_wi_w0: l_dis_wi_w0
     
     _writer: SummaryWriter
     _file_writer: file_writer
@@ -42,13 +45,15 @@ class bert_test(exp_models.exp_models):
         self._l_test_loss  = l_test_loss(self._base_model, self._writer)
         self._l_ntk        = l_ntk(self._base_model, self._file_writer)
         self._l_grad       = l_grad(self._base_model, self._file_writer)
+        self._l_lr         = l_learning_rate(self._base_model, self._writer)
+        self._l_dis_wi_w0  = l_dis_wi_w0(self._base_model, self._writer)
         
         self._accelerator  = Accelerator()
         
     
     def init_model(self) -> None:
         
-        self._num_epochs = 80
+        self._num_epochs = 400
         num_updates = self._num_epochs * len(self._train_loader)
 
         self._optimizer = optim.AdamW(self._base_model.parameters(), lr=2e-4, weight_decay=0)
@@ -71,6 +76,7 @@ class bert_test(exp_models.exp_models):
 
     
     def train(self) -> None:
+        self._l_dis_wi_w0.init_w0(self._base_model.named_parameters())
         
         for epoch in range(self._num_epochs):
             self._base_model.train()
@@ -78,6 +84,11 @@ class bert_test(exp_models.exp_models):
             self._l_ntk.compute(train_loader=self._train_loader)
             self._l_ntk.flush()
             
+            self._l_dis_wi_w0.compute(parameter=self._base_model.named_parameters(), epoch=epoch)
+            self._l_dis_wi_w0.flush()
+            
+            self._l_lr.compute(optimizer=self._optimizer, epoch=epoch)
+            self._l_lr.flush()
             
             for i, batch in enumerate(self._train_loader):
                 
@@ -89,6 +100,7 @@ class bert_test(exp_models.exp_models):
                 
                 self._l_train_loss.compute(loss=loss, epoch=epoch)
                 self._l_grad.compute(parameter=self._base_model.named_parameters())
+            
             
             self._l_test_loss.compute(test_loader=self._test_loader, epoch=epoch)
             
@@ -128,7 +140,7 @@ if __name__ == "__main__":
         raise Exception("no available devices")
     torch.cuda.set_device(availabe_device)
     
-    b = bert_test(model_name="bert_test_" + n, config_file="config/bert.json")
+    b = bert_test(model_name="bert_test_" + n, config_file="config/bert_small.json")
     
     b.init_model()
     b.train()
