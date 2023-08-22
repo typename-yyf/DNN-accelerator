@@ -7,7 +7,7 @@ from accelerate import Accelerator
 from torch.utils.tensorboard import SummaryWriter
 from transformers import BertConfig, get_cosine_schedule_with_warmup
 import torch.optim as optim
-from base_loggers import l_train_loss, l_test_loss, l_ntk, l_grad, l_dis_wi_w0, l_learning_rate
+from base_loggers import l_train_loss, l_test_loss, l_ntk, l_grad, l_dis_wi_w0, l_learning_rate, l_grad_all
 
 import torch
 import numpy as np
@@ -47,6 +47,7 @@ class bert_test(exp_models.exp_models):
         self._l_grad       = l_grad(self._base_model, self._file_writer)
         self._l_lr         = l_learning_rate(self._base_model, self._writer)
         self._l_dis_wi_w0  = l_dis_wi_w0(self._base_model, self._writer)
+        self._l_grad_all   = l_grad_all(self._base_model, self._file_writer)
         
         self._accelerator  = Accelerator()
         
@@ -56,7 +57,8 @@ class bert_test(exp_models.exp_models):
         self._num_epochs = 400
         num_updates = self._num_epochs * len(self._train_loader)
 
-        self._optimizer = optim.AdamW(self._base_model.parameters(), lr=2e-4, weight_decay=0)
+        self._optimizer = optim.AdamW(self._base_model.parameters(), lr=1e-3, weight_decay=0.01, betas=[0.9, 0.999], eps=1e-6)
+
         self._lr_scheduler = get_cosine_schedule_with_warmup(
             optimizer=self._optimizer,
             num_warmup_steps=num_updates * 0.05,
@@ -81,7 +83,7 @@ class bert_test(exp_models.exp_models):
         for epoch in range(self._num_epochs):
             self._base_model.train()
             
-            self._l_ntk.compute(train_loader=self._train_loader)
+            self._l_ntk.compute(train_loader=self._train_loader, epoch=epoch)
             self._l_ntk.flush()
             
             self._l_dis_wi_w0.compute(parameter=self._base_model.named_parameters(), epoch=epoch)
@@ -99,14 +101,16 @@ class bert_test(exp_models.exp_models):
                 self._lr_scheduler.step()
                 
                 self._l_train_loss.compute(loss=loss, epoch=epoch)
-                self._l_grad.compute(parameter=self._base_model.named_parameters())
+                # self._l_grad.compute(parameter=self._base_model.named_parameters())
             
+            if epoch % 10 == 0 or (epoch >= 90 and epoch < 100):
+                self._l_grad_all.compute(parameter=self._base_model.named_parameters(), epoch=epoch)
             
             self._l_test_loss.compute(test_loader=self._test_loader, epoch=epoch)
             
             self._l_test_loss.flush()
             self._l_train_loss.flush()
-            self._l_grad.flush()
+            # self._l_grad.flush()
             
             
 def get_available_cuda_device() -> int:
@@ -130,17 +134,17 @@ def set_seed(seed: int) -> None:
 import sys
 
 if __name__ == "__main__":
-    # 这个seed目前在17个epoch就可以复现不稳定性
-    set_seed(10315)
-    
-    n = sys.argv[1]
+    # 10315 这个seed目前在17个epoch就可以复现不稳定性
+    # 29799 27308 这个seed用于bert_small
+    seed = 29799
+    set_seed(int(seed))
     
     availabe_device = get_available_cuda_device()
     if availabe_device < 0:
         raise Exception("no available devices")
     torch.cuda.set_device(availabe_device)
     
-    b = bert_test(model_name="bert_test_" + n, config_file="config/bert_small.json")
+    b = bert_test(model_name="bert_" + str(seed), config_file="config/bert_small.json")
     
     b.init_model()
     b.train()
