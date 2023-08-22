@@ -135,8 +135,8 @@ import sys
 
 if __name__ == "__main__":
     # 10315 这个seed目前在17个epoch就可以复现不稳定性
-    # 29799 27308 这个seed用于bert_small
-    seed = 29799
+    # 29779 27308 这个seed用于bert_small
+    seed = 29779
     set_seed(int(seed))
     
     availabe_device = get_available_cuda_device()
