@@ -9,7 +9,7 @@
     "type_vocab_size":2,
     "vocab_size":50265,
     "seq_len": 64,
-    "batch_size": 128,
+    "batch_size": 96,
     "layer_norm_eps": 1e-12,
     "initializer_range": 0.02,
     "pooler_type": "weightpooler",
@@ -20,9 +20,9 @@
     "capacity_factor": 1.5,
 
     "dataset_name": "wikitext-2-raw-v1",
-    "preprocessed": true,
+    "preprocessed": false,
     "dataset_cache": {
-        "wikitext-2-raw-v1": "/data/ybshi/datasets/tokenized/wikitext-2",
+        "wikitext-2-raw-v1": "./data",
         "wikitext-103-raw-v1": "/data/ybshi/datasets/tokenized/wikitext-103",
         "bookcorpus": "/data/ybshi/datasets/tokenized/bookcorpus",
         "bertcorpus": "/data/ybshi/datasets/tokenized/bertcorpus"

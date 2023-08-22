@@ -18,10 +18,10 @@ flush与compute分离的原因是因为一些参数可能需要多次更新，�
 
 class logger:
     _model: Module
-    _writer: FileIO|SummaryWriter
+    #_writer: FileIOSummaryWriter
     _accelerator: Accelerator
     
-    def __init__(self, model: Module, writer: FileIO|SummaryWriter, accelerator: Accelerator=None):
+    def __init__(self, model: Module, writer, accelerator: Accelerator=None):
         self._model = model
         self._writer = writer
         self._accelerator = accelerator

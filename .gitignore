@@ -1,2 +1,15 @@
-__*
-*swp
+__pycache__
+datasets
+data
+log
+*.out
+.vscode
+*.png
+*.pth
+temp*
+scores*
+backup
+*.yaml
+figures
+snapshots
+
