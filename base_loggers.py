@@ -68,12 +68,15 @@ class l_test_loss(logger):
     
 class l_ntk(logger):
     _head_lmax: torch.Tensor
+    _epoch: int
     
     def __init__(self, model: Module, writer: file_writer, accelerator: Accelerator=None):
         super(l_ntk, self).__init__(model, writer, accelerator)
+        self._epoch = 0
         
-    def compute(self, train_loader, ker_size: int=4):
+    def compute(self, train_loader, epoch: int, ker_size: int=4):
         config = self._model.config
+        self._epoch = epoch
         
         head_NTKs_norm = [
             [0 for _ in range(config.num_attention_heads)] 
@@ -123,7 +126,7 @@ class l_ntk(logger):
         ])
         
     def flush(self):
-        self._writer.add_tensor("lmax", self._head_lmax)
+        self._writer.add_tensor("lmax", self._head_lmax, self._epoch)
         self._head_lmax = None
     
 class l_ntk_single_head(logger):
@@ -139,6 +142,7 @@ class l_ntk_single_head(logger):
 class l_grad(logger):
     _head_max_grad: torch.Tensor
     _head_sum_grad: torch.Tensor
+    _epoch: int
 
     def __init__(
         self, 
@@ -152,7 +156,11 @@ class l_grad(logger):
         self._head_max_grad = torch.zeros((layers, heads), dtype=torch.float32)
         self._head_sum_grad = torch.zeros((layers, heads), dtype=torch.float32)
         
-    def compute(self, parameter):
+        self._epoch = 0
+        
+    def compute(self, parameter, epoch: int):
+        self._epoch = 0
+        
         for name, para in parameter:
             if "heads" in name:
                 grad = para.grad.detach()
@@ -168,8 +176,8 @@ class l_grad(logger):
                 self._head_max_grad[l][h] = max(grad_max, self._head_max_grad[l][h])
     
     def flush(self):
-        self._writer.add_tensor("grad_max", self._head_max_grad)
-        self._writer.add_tensor("grad_sum", self._head_sum_grad)
+        self._writer.add_tensor("grad_max", self._head_max_grad, self._epoch)
+        self._writer.add_tensor("grad_sum", self._head_sum_grad, self._epoch)
         
         self._head_max_grad = torch.zeros_like(self._head_max_grad)
         self._head_sum_grad = torch.zeros_like(self._head_sum_grad)
@@ -238,4 +246,23 @@ class l_dis_wi_w0(logger):
         self._writer.add_scalar("dis_wi_w0", self._ans, self._epoch)
         self._epoch = 0
     
+class l_grad_all(logger):
+    _epoch: int
+
+    def __init__(self, model: Module, writer: SummaryWriter, accelerator: Accelerator=None):
+        super(l_grad_all, self).__init__(model, writer, accelerator)
+        
+        self._epoch = 0
+        
     
+    def compute(self, parameter, epoch: int):
+        self._epoch = epoch
+        
+        i = 0
+        for name, para in parameter:
+            if "head" in name:
+                self._writer.add_tensor("grad_all_epoch_" + str(self._epoch), para.detach(), i)
+                i += 1
+            
+    def flush(self):
+        pass
