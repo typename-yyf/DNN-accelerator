@@ -194,5 +194,5 @@ if __name__ == "__main__":
     
     b = bert_test(model_name=sys.argv[1] + "_" + str(seed), config_file="config/bert_small.json")
     
-    b.init_model("log_tmp/brkpoint_test.pth")
+    b.init_model("")
     b.train()
