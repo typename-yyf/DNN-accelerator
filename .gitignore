@@ -13,3 +13,5 @@ backup
 figures
 snapshots
 
+*.swp
+tags
