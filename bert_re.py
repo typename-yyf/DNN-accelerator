@@ -34,7 +34,7 @@ class bert_test(exp_models.exp_models):
     
     def _freeze(self):
         i = 0
-        p = self._base_model.named_parameters
+        p = self._base_model.named_parameters()
         for name, para in p:
             if "heads" in name:
                 with torch.no_grad():

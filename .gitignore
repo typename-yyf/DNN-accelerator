@@ -1,7 +1,7 @@
 __pycache__
 datasets
 data
-log
+log*
 *.out
 .vscode
 *.png
@@ -15,3 +15,4 @@ snapshots
 
 *.swp
 tags
+test*
