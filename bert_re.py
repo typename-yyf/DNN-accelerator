@@ -28,14 +28,46 @@ class bert_test(exp_models.exp_models):
     _writer: SummaryWriter
     _file_writer: file_writer
     _num_epochs: int
+    _start_epoch: int
+    
+    _mask: dict
+    
+    def _freeze(self):
+        i = 0
+        p = self._base_model.named_parameters
+        for name, para in p:
+            if "heads" in name:
+                with torch.no_grad():
+                    p.grad = p.grad * self._mask[i]
+                    i += 1
+
+    def _save(self, file_path: str, epoch: int):
+        save_dict = {
+            "base_model":   self._base_model.state_dict(),
+            "optimizer":    self._optimizer.state_dict(),
+            "lr_scheduler": self._lr_scheduler.state_dict(),
+            "epoch":        epoch
+        }
+        
+        torch.save(save_dict, file_path)
+        
+    def _load(self, file_path: str):
+        torch.cuda.empty_cache()
+        
+        save_dict = torch.load(file_path, map_location=torch.device('cpu'))
+        
+        self._base_model.load_state_dict(save_dict["base_model"])
+        self._optimizer.load_state_dict(save_dict["optimizer"])
+        self._lr_scheduler.load_state_dict(save_dict["lr_scheduler"])
+        self._start_epoch = save_dict["epoch"]
 
     def __init__(self, model_name: str, config_file: str):
         config = BertConfig.from_json_file(config_file)
         
         self._base_model   = base_models.BertForMLM(config=config)
         self._dataset      = Wikitext(config=config)
-        self._writer       = SummaryWriter("log/" + model_name)
-        self._file_writer  = file_writer("log/" + model_name + "_t")
+        self._writer       = SummaryWriter("log_tmp/" + model_name)
+        self._file_writer  = file_writer("log_tmp/" + model_name + "_t")
         
         self._train_loader = self._dataset.train_loader
         self._val_loader   = self._dataset.val_loader
@@ -52,9 +84,10 @@ class bert_test(exp_models.exp_models):
         self._accelerator  = Accelerator()
         
     
-    def init_model(self) -> None:
+    def init_model(self, pth_path: str="") -> None:
+        self._num_epochs  = 400
+        self._start_epoch = 0
         
-        self._num_epochs = 400
         num_updates = self._num_epochs * len(self._train_loader)
 
         self._optimizer = optim.AdamW(self._base_model.parameters(), lr=1e-3, weight_decay=0.01, betas=[0.9, 0.999], eps=1e-6)
@@ -64,6 +97,11 @@ class bert_test(exp_models.exp_models):
             num_warmup_steps=num_updates * 0.05,
             num_training_steps=num_updates,
         )
+        
+        if pth_path != "":
+            self._load(pth_path)
+            
+        self._mask = file_writer.read_file("log/mask")
         
         self._base_model, self._optimizer, self._lr_scheduler, \
             self._train_loader, self._val_loader, self._test_loader = \
@@ -75,36 +113,46 @@ class bert_test(exp_models.exp_models):
             self._val_loader, 
             self._test_loader
         )
+        
+        
 
     
     def train(self) -> None:
-        self._l_dis_wi_w0.init_w0(self._base_model.named_parameters())
+        # self._l_dis_wi_w0.init_w0(self._base_model.named_parameters())
         
-        for epoch in range(self._num_epochs):
+        for epoch in range(self._start_epoch, self._num_epochs):
+            # if epoch == 1:
+               # self._save("log_tmp/brkpoint_test.pth", 1)
+            
+            
             self._base_model.train()
             
             self._l_ntk.compute(train_loader=self._train_loader, epoch=epoch)
             self._l_ntk.flush()
             
-            self._l_dis_wi_w0.compute(parameter=self._base_model.named_parameters(), epoch=epoch)
-            self._l_dis_wi_w0.flush()
+            # self._l_dis_wi_w0.compute(parameter=self._base_model.named_parameters(), epoch=epoch)
+            # self._l_dis_wi_w0.flush()
             
             self._l_lr.compute(optimizer=self._optimizer, epoch=epoch)
             self._l_lr.flush()
             
             for i, batch in enumerate(self._train_loader):
-                
+            
                 loss, _ = self._base_model(**batch)
                 self._optimizer.zero_grad()
                 loss.backward()
+                
+                if epoch >= 96:
+                    self._freeze()
+                
                 self._optimizer.step()
                 self._lr_scheduler.step()
                 
                 self._l_train_loss.compute(loss=loss, epoch=epoch)
                 # self._l_grad.compute(parameter=self._base_model.named_parameters())
             
-            if epoch % 10 == 0 or (epoch >= 90 and epoch < 100):
-                self._l_grad_all.compute(parameter=self._base_model.named_parameters(), epoch=epoch)
+            # if epoch % 10 == 0 or (epoch >= 90 and epoch < 100):
+                # self._l_grad_all.compute(parameter=self._base_model.named_parameters(), epoch=epoch)
             
             self._l_test_loss.compute(test_loader=self._test_loader, epoch=epoch)
             
@@ -142,9 +190,9 @@ if __name__ == "__main__":
     availabe_device = get_available_cuda_device()
     if availabe_device < 0:
         raise Exception("no available devices")
-    torch.cuda.set_device(availabe_device)
+    torch.cuda.set_device(5)
     
-    b = bert_test(model_name="bert_" + str(seed), config_file="config/bert_small.json")
+    b = bert_test(model_name=sys.argv[1] + "_" + str(seed), config_file="config/bert_small.json")
     
-    b.init_model()
+    b.init_model("")
     b.train()

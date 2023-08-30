@@ -3,3 +3,6 @@
 ```util.py, Dataset.py, config``` 是原有文件，可能后续会修改
 
 其余文件在开头注释里有写明，hessian的logger还没有完成，如果有需要直接运行现有代码。如果想要计算其他指标，在base_logger.py里直接添加即可。
+
+## mask文件
+需要解压后使用
