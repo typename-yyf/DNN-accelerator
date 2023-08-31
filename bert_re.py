@@ -40,34 +40,24 @@ class bert_test(exp_models.exp_models):
                 with torch.no_grad():
                     para.grad = para.grad * self._mask[i]
                     i += 1
+    
+    
 
     def _save(self, file_path: str, epoch: int):
-        save_dict = {
-            "base_model":   self._base_model.state_dict(),
-            "optimizer":    self._optimizer.state_dict(),
-            "lr_scheduler": self._lr_scheduler.state_dict(),
-            "epoch":        epoch
-        }
-        
-        torch.save(save_dict, file_path)
+        self._accelerator.save_state(file_path)
         
     def _load(self, file_path: str):
         torch.cuda.empty_cache()
         
-        save_dict = torch.load(file_path, map_location=torch.device('cpu'))
-        
-        self._base_model.load_state_dict(save_dict["base_model"])
-        self._optimizer.load_state_dict(save_dict["optimizer"])
-        self._lr_scheduler.load_state_dict(save_dict["lr_scheduler"])
-        self._start_epoch = save_dict["epoch"]
+        self._accelerator.load_state(file_path)
 
     def __init__(self, model_name: str, config_file: str):
         config = BertConfig.from_json_file(config_file)
         
         self._base_model   = base_models.BertForMLM(config=config)
         self._dataset      = Wikitext(config=config)
-        self._writer       = SummaryWriter("log_tmp/" + model_name)
-        self._file_writer  = file_writer("log_tmp/" + model_name + "_t")
+        self._writer       = SummaryWriter("log/" + model_name)
+        self._file_writer  = file_writer("log/" + model_name + "_t")
         
         self._train_loader = self._dataset.train_loader
         self._val_loader   = self._dataset.val_loader
@@ -84,9 +74,9 @@ class bert_test(exp_models.exp_models):
         self._accelerator  = Accelerator()
         
     
-    def init_model(self, pth_path: str="") -> None:
+    def init_model(self, pth_path: str="", epoch: int=0) -> None:
         self._num_epochs  = 400
-        self._start_epoch = 0
+        self._start_epoch = epoch
         
         num_updates = self._num_epochs * len(self._train_loader)
 
@@ -97,9 +87,6 @@ class bert_test(exp_models.exp_models):
             num_warmup_steps=num_updates * 0.05,
             num_training_steps=num_updates,
         )
-        
-        if pth_path != "":
-            self._load(pth_path)
             
         self._mask = file_writer.read_file("log/mask")
         
@@ -114,6 +101,9 @@ class bert_test(exp_models.exp_models):
             self._test_loader
         )
         
+        if pth_path != "":
+            self._load(pth_path)
+        
         
 
     
@@ -121,10 +111,6 @@ class bert_test(exp_models.exp_models):
         # self._l_dis_wi_w0.init_w0(self._base_model.named_parameters())
         
         for epoch in range(self._start_epoch, self._num_epochs):
-            # if epoch == 1:
-               # self._save("log_tmp/brkpoint_test.pth", 1)
-            
-            
             self._base_model.train()
             
             self._l_ntk.compute(train_loader=self._train_loader, epoch=epoch)
@@ -187,6 +173,8 @@ def set_seed(seed: int) -> None:
     torch.backends.cudnn.deterministic = True
 
 import sys
+import argparse
+
 
 if __name__ == "__main__":
     # 10315 这个seed目前在17个epoch就可以复现不稳定性
@@ -194,13 +182,13 @@ if __name__ == "__main__":
     seed = 29779
     set_seed(int(seed))
     
-    availabe_device = get_available_cuda_device()
-    if availabe_device < 0:
+    available_device = get_available_cuda_device()
+    if available_device < 0:
         raise Exception("no available devices")
-    print(availabe_device)
-    torch.cuda.set_device(1)
+    print(available_device)
+    torch.cuda.set_device(available_device)
     
     b = bert_test(model_name=sys.argv[1] + "_" + str(seed), config_file="config/bert_small.json")
     
-    b.init_model("")
+    b.init_model("log/brkpoint_95.pth", 95)
     b.train()
