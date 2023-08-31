@@ -38,7 +38,7 @@ class bert_test(exp_models.exp_models):
         for name, para in p:
             if "heads" in name:
                 with torch.no_grad():
-                    p.grad = p.grad * self._mask[i]
+                    para.grad = para.grad * self._mask[i]
                     i += 1
 
     def _save(self, file_path: str, epoch: int):
@@ -142,8 +142,15 @@ class bert_test(exp_models.exp_models):
                 self._optimizer.zero_grad()
                 loss.backward()
                 
-                if epoch >= 96:
+                if epoch >= 96 and epoch <= 100:
                     self._freeze()
+
+                if epoch >= 109:
+                    if epoch == 109:
+
+                        self._mask = file_writer.read_file("masks/random_mask")
+                    self._freeze()
+                     
                 
                 self._optimizer.step()
                 self._lr_scheduler.step()
@@ -190,7 +197,8 @@ if __name__ == "__main__":
     availabe_device = get_available_cuda_device()
     if availabe_device < 0:
         raise Exception("no available devices")
-    torch.cuda.set_device(5)
+    print(availabe_device)
+    torch.cuda.set_device(1)
     
     b = bert_test(model_name=sys.argv[1] + "_" + str(seed), config_file="config/bert_small.json")
     
