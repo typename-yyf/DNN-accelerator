@@ -16,3 +16,5 @@ snapshots
 *.swp
 tags
 test*
+brkpoints/*
+masks/*
