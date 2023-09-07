@@ -128,16 +128,11 @@ class bert_test(exp_models.exp_models):
                 self._optimizer.zero_grad()
                 loss.backward()
                 
-                if epoch >= 96 and epoch <= 100:
-                    self._freeze()
-
+                if epoch >= 96 and epoch <= 100: self._freeze()
                 if epoch >= 109:
-                    if epoch == 109:
-
-                        self._mask = file_writer.read_file("masks/random_mask")
+            #        if epoch == 109:
+            #            self._mask = file_writer.read_file("masks/random_+_topk_mask")
                     self._freeze()
-                     
-                
                 self._optimizer.step()
                 self._lr_scheduler.step()
                 
@@ -186,9 +181,9 @@ if __name__ == "__main__":
     if available_device < 0:
         raise Exception("no available devices")
     print(available_device)
-    torch.cuda.set_device(available_device)
+    torch.cuda.set_device(7)
     
     b = bert_test(model_name=sys.argv[1] + "_" + str(seed), config_file="config/bert_small.json")
     
-    b.init_model("log/brkpoint_95.pth", 95)
+    b.init_model("/home/sytang/DNN-accelerator/brkpoints/brkpoint_95.pth", 95)
     b.train()
