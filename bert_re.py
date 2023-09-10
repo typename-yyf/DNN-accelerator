@@ -8,7 +8,7 @@ from torch.utils.tensorboard import SummaryWriter
 from transformers import BertConfig, get_cosine_schedule_with_warmup
 import torch.optim as optim
 from base_loggers import l_train_loss, l_test_loss, l_ntk, l_grad, l_dis_wi_w0, \
-    l_learning_rate, l_grad_all, l_hessian_lmax, l_hessian_lmax_all
+    l_learning_rate, l_grad_all#, l_hessian_lmax, l_hessian_lmax_all
 
 import torch
 import numpy as np
@@ -81,11 +81,10 @@ class bert_test(exp_models.exp_models):
         self._l_lr         = l_learning_rate(self._base_model, self._writer)
         self._l_dis_wi_w0  = l_dis_wi_w0(self._base_model, self._writer)
         self._l_grad_all   = l_grad_all(self._base_model, self._file_writer)
-        self._l_hessian_lmax     = l_hessian_lmax(self._base_model, self._file_writer)
-        self._l_hessian_lmax_all = l_hessian_lmax_all(self._base_model, self._file_writer)
+        #self._l_hessian_lmax     = l_hessian_lmax(self._base_model, self._file_writer)
+        #self._l_hessian_lmax_all = l_hessian_lmax_all(self._base_model, self._file_writer)
         
         self._accelerator  = Accelerator()
-        
     
     def init_model(self, pth_path: str="", epoch: int=0) -> None:
         self._num_epochs  = 400
@@ -101,8 +100,7 @@ class bert_test(exp_models.exp_models):
             num_training_steps=num_updates,
         )
             
-        self._mask = file_writer.read_file("log/overlapped_mask", "cuda")
-        self._mask = torch.ones((576, 768))
+        #self._mask = file_writer.read_file("log/overlapped_mask", "cuda")
         
         self._base_model, self._optimizer, self._lr_scheduler, \
             self._train_loader, self._val_loader, self._test_loader = \
@@ -116,47 +114,33 @@ class bert_test(exp_models.exp_models):
         )
         if pth_path != "":
             self._load(pth_path)
-        
-        
-        
-        
-
     
     def train(self) -> None:
         # self._l_dis_wi_w0.init_w0(self._base_model.named_parameters())
-        
         for epoch in range(self._start_epoch, self._num_epochs):
             self._base_model.train()
-            
             self._l_ntk.compute(train_loader=self._train_loader, epoch=epoch)
             self._l_ntk.flush()
-            
-            
             # self._l_dis_wi_w0.compute(parameter=self._base_model.named_parameters(), epoch=epoch)
             # self._l_dis_wi_w0.flush()
-            
             self._l_lr.compute(optimizer=self._optimizer, epoch=epoch)
             self._l_lr.flush()
-            
             for i, batch in enumerate(self._train_loader):
-            
                 loss, _ = self._base_model(**batch)
                 self._optimizer.zero_grad()
                 loss.backward()
-                
-                if epoch >= 96 and epoch <= 100: self._freeze()
-                if epoch >= 109:
+            #   if epoch >= 96 and epoch <= 100: self._freeze()
+            #    if epoch >= 109:
             #        if epoch == 109:
             #            self._mask = file_writer.read_file("masks/random_+_topk_mask")
-                    self._freeze()
-                if epoch >= 96:
-                    self._freeze()
-                
+            #        self._freeze()
+            #    if epoch >= 96:
+            #        self._freeze()
                 self._optimizer.step()
                 self._lr_scheduler.step()
-                
                 self._l_train_loss.compute(loss=loss, epoch=epoch)
-                
+                #if(epoch == 96):
+                #    self._l_grad_all.compute(parameter=self._base_model.named_parameters(), epoch=epoch)
                 r'''
                 if i == 0 and epoch in [
                     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 30, 40, 50, 60, 70, 80, 90, 91, 92, 93, 94, 95, 96
@@ -173,18 +157,12 @@ class bert_test(exp_models.exp_models):
                     self._load("log/.tmp_pth")
                 '''
                 # self._l_grad.compute(parameter=self._base_model.named_parameters())
-            
             # if epoch % 10 == 0 or (epoch >= 90 and epoch < 100):
                 # self._l_grad_all.compute(parameter=self._base_model.named_parameters(), epoch=epoch)
-            
-            
-            
             self._l_test_loss.compute(test_loader=self._test_loader, epoch=epoch)
-            
             self._l_test_loss.flush()
             self._l_train_loss.flush()
             # self._l_grad.flush()
-            
             
 def get_available_cuda_device() -> int:
     max_devs = torch.cuda.device_count()
@@ -214,13 +192,14 @@ if __name__ == "__main__":
     seed = 29779
     set_seed(int(seed))
     
-    availabe_device = get_available_cuda_device()
-    if availabe_device < 0:
+    available_device = get_available_cuda_device()
+    if available_device < 0:
         raise Exception("no available devices")
     print(available_device)
-    torch.cuda.set_device(7)
+    torch.cuda.set_device(available_device)
     
     b = bert_test(model_name=sys.argv[1] + "_" + str(seed), config_file="config/bert_small.json")
     
-    b.init_model("/home/sytang/DNN-accelerator/brkpoints/brkpoint_95.pth", 95)
+    #b.init_model("/home/sytang/DNN-accelerator/brkpoints/brkpoint_95.pth", 95)
+    b.init_model()
     b.train()
