@@ -139,8 +139,8 @@ class bert_test(exp_models.exp_models):
                 self._optimizer.zero_grad()
                 loss.backward()
                 
-                if epoch >= 96:
-                    self._freeze()
+                # if epoch >= 96:
+                    # self._freeze()
                 
                 self._optimizer.step()
                 self._lr_scheduler.step()
