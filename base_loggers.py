@@ -65,7 +65,72 @@ class l_test_loss(logger):
         print("test_loss:", self._loss)
         
         self._loss = 0
+
+class l_ntk_single(logger):
+    _head_lmax: torch.Tensor
+    _epoch: int
     
+    def __init__(self, model: Module, writer: file_writer, accelerator: Accelerator=None):
+        super(l_ntk_single, self).__init__(model, writer, accelerator)
+        self._epoch = 0
+        
+    def compute(self, train_loader, epoch: int, ker_size: int=4):
+        config = self._model.config
+        self._epoch = epoch
+        
+        head_NTKs_norm = [
+            [0 for _ in range(config.num_attention_heads)] 
+            for _ in range(config.num_hidden_layers)
+        ]
+        head_grads = [
+            [[] for _ in range(config.num_attention_heads)] 
+            for _ in range(config.num_hidden_layers)
+        ]
+    
+        for i, batch in enumerate(train_loader):
+            # 这里只计算一部分的kernel，太大复杂度太高无法计算
+            if i >= ker_size: break
+            
+            batch = {k: v[:1, :] for k, v in batch.items()}
+            _, logits = self._model(**batch)
+
+            logits[0: 1].backward(torch.ones_like(logits[0: 1]))
+            for name, param in self._model.named_parameters():
+                # 这里只关心每个head的ntk，如果需要计算全连接层的则计算带有layer的参数
+                if 'heads' in name:
+                    grad = param.grad.detach().flatten()
+                    splited = name.split('.')
+                    l = int(splited[splited.index('layers') + 1])
+                    h = int(splited[splited.index('heads') + 1])
+                    head_grads[l][h].append(grad.unsqueeze(0).clone())
+                
+            self._model.zero_grad()
+            torch.cuda.empty_cache()
+        
+        for l, layer in enumerate(head_grads):
+            for h, head in enumerate(layer):
+                J_head = torch.concat(head)
+                
+                # 这里可以优化一下速度
+                J_head_norm = J_head.T / torch.norm(J_head.T, dim=0)
+                head_NTK_norm = J_head_norm.T @ J_head_norm
+                head_NTKs_norm[l][h] = head_NTK_norm.T
+            
+        del head_grads
+
+        self._head_lmax = torch.stack([
+            torch.stack([
+                util.lmax(head_NTKs_norm[l][h]) 
+                    for h in range(config.num_attention_heads)
+            ])
+            for l in range(config.num_hidden_layers)
+        ])
+        
+    def flush(self):
+        self._writer.add_tensor("lmax_single", self._head_lmax, self._epoch)
+        self._head_lmax = None
+
+
 class l_ntk(logger):
     _head_lmax: torch.Tensor
     _epoch: int
@@ -88,6 +153,7 @@ class l_ntk(logger):
         ]
     
         for i, batch in enumerate(train_loader):
+            torch.cuda.empty_cache()
             # 这里只计算一部分的kernel，太大复杂度太高无法计算
             if i >= ker_size: break
             
@@ -183,7 +249,28 @@ class l_grad(logger):
         self._head_sum_grad = torch.zeros_like(self._head_sum_grad)
 
 class l_hessian(logger):
-    pass               
+    _max_eigs: torch.Tensor
+    
+    def __init__(self, model: Module, writer: file_writer, accelerator: Accelerator=None):
+        super(l_hessian, self).__init__(model, writer, accelerator)         
+        
+    def compute(self, parameter, loss, n: int=100):
+        params = []
+        for name, p in parameter:
+            if "heads" in name:
+                params.append(p)
+        
+        V = [torch.rand_like(p, device=p.device) for p in params]
+        V = [v / torch.norm(v) for v in V]
+        for _ in range(n):
+            self._model.zero_grad()
+            grad = torch.autograd.grad(loss, params, create_graph=True)
+            grad = [g / torch.norm(g) for g in grad]
+            Hv = torch.autograd.grad(grad, params, V, only_inputs=True, retain_graph=True)
+            self._max_eigs = torch.tensor([torch.sum(h * v) for h, v in zip(Hv, V)], device=params[0].device)
+            V = [v / torch.norm(v) for v in Hv]
+    def flush(self, epoch: int):
+        self._writer.add_tensor("hessian_lmax", self._max_eigs, epoch)
 
 class l_learning_rate(logger):
     
@@ -260,8 +347,8 @@ class l_grad_all(logger):
         
         i = 0
         for name, para in parameter:
-            if "head" in name:
-                self._writer.add_tensor("grad_all_epoch_" + str(self._epoch), para.detach(), i)
+            if "heads" in name:
+                self._writer.add_tensor("grad_all_epoch_" + str(self._epoch), para.grad.detach(), i)
                 i += 1
             
     def flush(self):
