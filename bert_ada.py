@@ -158,6 +158,15 @@ class bert_test(exp_models.exp_models):
         exp_batch = 208
         exp_epoch = 14
         
+        # 相关超参
+        exp_threshold = 2 # 爆炸幅度（2倍
+        alpha1 = 0.2
+        alpha2 = 0.8 # 正常grad的对数平均参数
+        p_lr = 0.5 # 模型爆炸后lr衰减倍数
+        d_lr = 2e-5 # 模型检测到大梯度但是未发生爆炸时lr增加幅度
+        
+        
+        
         
         for epoch in range(self._start_epoch, self._num_epochs):
             
@@ -192,12 +201,12 @@ class bert_test(exp_models.exp_models):
                 if g_norm < 0:
                     g_norm = tg_norm
                 else:
-                    if tg_norm > g_norm * 4:
+                    if tg_norm > g_norm * exp_threshold:
                         normal_grad = False
                         print("large grad detected")
                         self._save(".tmp_pth", 0)
                     else:
-                        g_norm = tg_norm * 0.2 + g_norm * 0.8
+                        g_norm = tg_norm * alpha1 + g_norm * alpha2
                     
                 
                 self._optimizer.step()
@@ -215,10 +224,10 @@ class bert_test(exp_models.exp_models):
                         
                         self._load(".tmp_pth")
                         for param_group in self._optimizer.param_groups:
-                            param_group['lr'] *= 0.5
+                            param_group['lr'] *= p_lr
                     elif i > exp_batch or epoch != exp_epoch: 
                         for param_group in self._optimizer.param_groups:
-                            param_group['lr'] += 2e-5
+                            param_group['lr'] += d_lr
                         
                 
                 if i % 20 == 0:
