@@ -161,11 +161,11 @@ class bert_test(exp_models.exp_models):
         exp_epoch = 14
         
         # 相关超参
-        exp_threshold = 2 # 爆炸幅度（2倍
+        exp_threshold = 3 # 爆炸幅度，当检测到| grad_{t+1} | > exp_threshold * | grad_t |认为是大幅度的梯度变化
         alpha1 = 0.2
         alpha2 = 0.8 # 正常grad的对数平均参数
-        p_lr = 0.5 # 模型爆炸后lr衰减倍数
-        d_lr = 2e-5 # 模型检测到大梯度但是未发生爆炸时lr增加幅度
+        p_lr = 0.5 # 模型爆炸后lr衰减倍数，这个参数越小模型越稳定
+        d_lr = 2e-5 # 模型检测到大梯度但是未发生爆炸时lr增加幅度，这个参数越小模型越稳定
         
         
         
