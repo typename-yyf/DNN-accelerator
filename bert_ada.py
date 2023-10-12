@@ -155,6 +155,8 @@ class bert_test(exp_models.exp_models):
     def train(self) -> None:
         
         g_norm = -1
+        
+        # 这两个参数分别指定了模型第一次发生爆炸时的batch和epoch，主要用于保证在爆炸之前，模型与先前的训练过程的一致性
         exp_batch = 208
         exp_epoch = 14
         
