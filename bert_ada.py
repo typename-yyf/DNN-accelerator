@@ -123,7 +123,7 @@ class bert_test(exp_models.exp_models):
         # self._optimizer = optim.AdamW(self._base_model.parameters(), lr=1e-3, weight_decay=0.01, betas=[0.9, 0.999], eps=1e-6)
         
         # bert_base
-        self._optimizer = optim.AdamW(self._base_model.parameters(), lr=4e-4, weight_decay=0)
+        self._optimizer = optim.AdamW(self._base_model.parameters(), lr=2e-3, weight_decay=0)
 
         self._lr_scheduler = get_cosine_schedule_with_warmup(
             optimizer=self._optimizer,
@@ -155,6 +155,7 @@ class bert_test(exp_models.exp_models):
     def train(self) -> None:
         
         g_norm = -1
+        fixed_lr = 100
         
         # 这两个参数分别指定了模型第一次发生爆炸时的batch和epoch，主要用于保证在爆炸之前，模型与先前的训练过程的一致性
         exp_batch = 208
@@ -165,7 +166,8 @@ class bert_test(exp_models.exp_models):
         alpha1 = 0.2
         alpha2 = 0.8 # 正常grad的对数平均参数
         p_lr = 0.5 # 模型爆炸后lr衰减倍数，这个参数越小模型越稳定
-        d_lr = 2e-5 # 模型检测到大梯度但是未发生爆炸时lr增加幅度，这个参数越小模型越稳定
+        d_lr = 2e-7 # 模型检测到大梯度但是未发生爆炸时lr增加幅度，这个参数越小模型越稳定
+        r = 0.1 # 对loss差的修正系数，这个系数越大，查全率越高，暂时以常数代替
         
         
         
@@ -209,11 +211,18 @@ class bert_test(exp_models.exp_models):
                         self._save(".tmp_pth", 0)
                     else:
                         g_norm = tg_norm * alpha1 + g_norm * alpha2
-                    
+                
+                if i % 20 == 0:
+                    print("loss", loss.item())
+                    print("lr", self._optimizer.param_groups[0]["lr"], fixed_lr)
+                
+                for param_group in self._optimizer.param_groups:
+                    param_group['lr'] = min(param_group['lr'], fixed_lr)
                 
                 self._optimizer.step()
-                if i <= exp_batch and epoch == exp_epoch:
-                    self._lr_scheduler.step()
+                # if i <= exp_batch and epoch == exp_epoch:
+                self._lr_scheduler.step()
+            
                 
                 if normal_grad == False:
                     self._base_model.eval()
@@ -221,20 +230,24 @@ class bert_test(exp_models.exp_models):
                         loss_after, _ = self._base_model(**batch)
                     self._base_model.train()
                     
-                    if loss_after > loss:
+                    real_lr = self._optimizer.param_groups[0]["lr"]
+                    
+                    if loss_after + r * real_lr * tg_norm > 0: # loss:
                         print("explosion detected, at batch", i)
                         
                         self._load(".tmp_pth")
-                        for param_group in self._optimizer.param_groups:
-                            param_group['lr'] *= p_lr
-                    elif i > exp_batch or epoch != exp_epoch: 
-                        for param_group in self._optimizer.param_groups:
-                            param_group['lr'] += d_lr
+                        if fixed_lr > self._optimizer.param_groups[0]["lr"]:
+                            fixed_lr = self._optimizer.param_groups[0]["lr"] * p_lr
+                        else:
+                            fixed_lr *= p_lr
+                        self._l_train_loss.compute(loss=loss, epoch=epoch)
                         
+                        continue
                 
-                if i % 20 == 0:
-                    print(loss.item())
-                    
+                if fixed_lr > d_lr:
+                    fixed_lr += d_lr
+                else:
+                    fixed_lr *= 2
                 
                 self._l_train_loss.compute(loss=loss, epoch=epoch)
                 
@@ -262,8 +275,8 @@ if __name__ == "__main__":
     
     
     # b = bert_test(model_name="debug" + "_" + str(seed), config_file="/home/yfyang/t/config/bert.json")
-    b = bert_test(model_name=sys.argv[1] + "_" + str(seed), config_file="config/bert.json")
+    b = bert_test(model_name=sys.argv[1] + "_" + str(seed), config_file="config/bert_small.json")
     
-    # b.init_model()
-    b.init_model("/home/yfyang/t/brk_pt14", 14)
+    b.init_model()
+    # b.init_model("/home/yfyang/t/brk_pt14", 14)
     b.train()
