@@ -102,6 +102,7 @@ class bert_test(exp_models.exp_models):
 
         self._optimizer = optim.AdamW(self._base_model.parameters(), lr=4e-4, weight_decay=0)
 
+        # 这里最好改成constant
         self._lr_scheduler = get_cosine_schedule_with_warmup(
             optimizer=self._optimizer,
             num_warmup_steps=num_updates * 0.05,
@@ -178,5 +179,5 @@ if __name__ == "__main__":
     # b = bert_test(model_name=sys.argv[1] + "_" + str(seed), config_file="config/bert_small.json")
     
     # b.init_model()
-    b.init_model("", "/home/yfyang/t/log/brkpt_62/pytorch_model.bin", 63)
+    b.init_model("", "/home/yfyang/t/log/brkpt_62/pytorch_model.bin", 0)
     b.train()
