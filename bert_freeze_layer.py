@@ -82,6 +82,7 @@ class bert_test(exp_models.exp_models):
         self._l_test_loss  = l_test_loss(self._base_model, self._writer)
         self._l_ntk        = l_ntk(self._base_model, self._file_writer)
         self._l_grad       = l_grad(self._base_model, self._file_writer)
+        self._l_lr         = l_learning_rate(self._base_model, self._writer)
         
         self._accelerator  = Accelerator()
         
